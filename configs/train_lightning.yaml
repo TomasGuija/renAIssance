@@ -1,0 +1,50 @@
+seed_everything: 333
+
+trainer:
+  accelerator: auto
+  devices: auto
+  max_epochs: 50
+  precision: 32-true
+  log_every_n_steps: 20
+  default_root_dir: saved_models/renaissance-none-resnet-bilstm-ctc
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: renAIssance
+      entity: tomasguija-polythechnic-university-of-madrid
+      name: renaissance-none-resnet-bilstm-ctc
+      log_model: false
+
+model:
+  FeatureExtraction: ResNet
+  SequenceModeling: BiLSTM
+  Transformation: None
+  Prediction: CTC
+  input_channel: 1
+  output_channel: 512
+  hidden_size: 256
+  adam: true
+  lr: 0.0001
+  beta1: 0.9
+  rho: 0.95
+  eps: 0.00000001
+  pretrained_path: "checkpoints/TPS-ResNet-BiLSTM-CTC.pth"
+  finetune: true
+  wandb_log_every_n_epochs: 1
+  wandb_num_logs: 8
+
+data:
+  dataset_csv: data/filtered_dataset.csv
+  image_root: data
+  val_pdf_indices: "1"
+  test_pdf_indices: "2"
+  workers: 0
+  batch_size: 1
+  batch_max_length: 101 # Percentile 99
+  imgH: 64
+  imgW: 1600
+  rgb: false
+  PAD: true
+  sensitive: false
+  data_filtering_off: false
+  character: "!&(),-.0123456789:;?ABCDEFGHIJLMNOPQRSTUVXYZabcdefghijlmnopqrstuvxyz§Ñáçéíñó– "

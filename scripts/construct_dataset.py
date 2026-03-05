@@ -84,13 +84,51 @@ def run_kraken_segment(png_path: Path, out_json: Path, text_direction: str) -> N
 # -------------------------
 # DOCX parsing: "PDF p2" sections
 # -------------------------
-PAGE_RE = re.compile(r"^\s*PDF\s+p\s*(\d+)\s*$", re.IGNORECASE)
-LINEBREAK_SPLIT_RE = re.compile(r"[\n\v]+")
+PAGE_EXACT_RE = re.compile(r"^\s*PDF\s+p\s*(\d+)\s*$", re.IGNORECASE)
+PAGE_PREFIX_RE = re.compile(r"^\s*PDF\b", re.IGNORECASE)
+PAGE_NUM_ANYWHERE_RE = re.compile(r"\bp\s*(\d+)\b", re.IGNORECASE)
+LINEBREAK_SPLIT_RE = re.compile(r"[\r\n\v\u2028\u2029]+")
 
-def parse_docx_pages(docx_path: Path) -> Dict[int, List[str]]:
+
+def split_long_gt_line(text: str, max_chars: int) -> List[str]:
+    text = text.strip()
+    if max_chars <= 0 or len(text) <= max_chars:
+        return [text] if text else []
+
+    chunks: List[str] = []
+    remaining = text
+    punct_re = re.compile(r"[\.,;:!?]")
+
+    while len(remaining) > max_chars:
+        window = remaining[: max_chars + 1]
+
+        cut = -1
+        punct_positions = [m.start() for m in punct_re.finditer(window)]
+        if punct_positions:
+            cut = punct_positions[-1] + 1
+        else:
+            space_pos = window.rfind(" ")
+            if space_pos > 0:
+                cut = space_pos
+
+        if cut <= 0:
+            cut = max_chars
+
+        head = remaining[:cut].strip()
+        if head:
+            chunks.append(head)
+        remaining = remaining[cut:].strip()
+
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
+def parse_docx_pages(docx_path: Path, max_gt_chars_per_line: int = 0) -> Dict[int, List[str]]:
     """
     Returns {page_num: [gt_line1, gt_line2, ...]}
-    Splits both by paragraphs AND by manual line breaks inside paragraphs.
+    Splits by paragraphs and line breaks inside paragraphs.
+    Any line starting with "PDF" is treated as a page marker (not GT text).
     """
     doc = Document(str(docx_path))
     pages: Dict[int, List[str]] = {}
@@ -98,23 +136,30 @@ def parse_docx_pages(docx_path: Path) -> Dict[int, List[str]]:
     current_page: Optional[int] = None
     for para in doc.paragraphs:
         raw = para.text or ""
-        txt = raw.strip()
-        if not txt:
-            continue
-
-        m = PAGE_RE.match(txt)
-        if m:
-            current_page = int(m.group(1))
-            pages.setdefault(current_page, [])
-            continue
-
-        if current_page is None:
-            # still in NOTES or header area
-            continue
-
-        # Split paragraph into physical lines if it contains manual line breaks
         parts = [p.strip() for p in LINEBREAK_SPLIT_RE.split(raw) if p.strip()]
-        pages[current_page].extend(parts)
+        if not parts:
+            continue
+
+        for part in parts:
+            m_exact = PAGE_EXACT_RE.match(part)
+            if m_exact:
+                current_page = int(m_exact.group(1))
+                pages.setdefault(current_page, [])
+                continue
+
+            if PAGE_PREFIX_RE.match(part):
+                m_any = PAGE_NUM_ANYWHERE_RE.search(part)
+                if m_any:
+                    current_page = int(m_any.group(1))
+                    pages.setdefault(current_page, [])
+                # Any 'PDF ...' line is metadata; never GT.
+                continue
+
+            if current_page is None:
+                continue
+
+            split_parts = split_long_gt_line(part, max_gt_chars_per_line)
+            pages[current_page].extend(split_parts)
 
     # prune empty
     pages = {k: v for k, v in pages.items() if any(s.strip() for s in v)}
@@ -299,6 +344,12 @@ def main() -> None:
     ap.add_argument("--tess_lang", default="eng", type=str, help="Tesseract language code(s), e.g. 'eng' or 'spa' or 'eng+spa'.")
     ap.add_argument("--min_score", default=0.15, type=float, help="Minimum similarity score to accept match into training CSV.")
     ap.add_argument("--skip_cost", default=0.85, type=float, help="Alignment skip cost (higher => fewer skips).")
+    ap.add_argument(
+        "--max_gt_chars_per_line",
+        default=0,
+        type=int,
+        help="If > 0, split long GT text lines into chunks of at most this many chars (heuristic).",
+    )
 
     args = ap.parse_args()
 
@@ -349,7 +400,7 @@ def main() -> None:
                 print(f"[WARN] No pages folder for {pdf_id}: expected {pdf_pages_dir}")
                 continue
 
-            page_to_gt = parse_docx_pages(docx_path)
+            page_to_gt = parse_docx_pages(docx_path, max_gt_chars_per_line=args.max_gt_chars_per_line)
             if not page_to_gt:
                 print(f"[WARN] No 'PDF pN' sections found in {docx_path.name}")
                 continue

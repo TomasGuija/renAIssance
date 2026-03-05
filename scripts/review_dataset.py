@@ -135,6 +135,7 @@ class DatasetReviewer:
         inplace: bool,
         max_width: int,
         max_height: int,
+        order: str,
     ) -> None:
         self.dataset_csv = dataset_csv
         self.image_root = image_root
@@ -144,6 +145,7 @@ class DatasetReviewer:
         self.inplace = inplace
         self.max_width = max_width
         self.max_height = max_height
+        self.order = order
 
         self.fieldnames: List[str] = []
         self.rows: List[Dict[str, str]] = []
@@ -176,6 +178,22 @@ class DatasetReviewer:
             reader = csv.DictReader(f)
             self.fieldnames = list(reader.fieldnames or [])
             self.rows = list(reader)
+
+        if self.order == "score_asc":
+            if "score" in self.fieldnames:
+                def _score_key(row: Dict[str, str]) -> float:
+                    raw = (row.get("score") or "").strip()
+                    try:
+                        return float(raw)
+                    except Exception:
+                        return float("inf")
+
+                self.rows.sort(key=_score_key)
+        elif self.order == "gt_len_desc":
+            def _gt_len_key(row: Dict[str, str]) -> int:
+                return len(row.get("gt_text") or "")
+
+            self.rows.sort(key=_gt_len_key, reverse=True)
 
         if not self.rows:
             raise RuntimeError("Dataset CSV has no rows")
@@ -569,6 +587,13 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--inplace", action="store_true", help="Overwrite input dataset_csv (creates .bak backup)")
     ap.add_argument("--max_width", type=int, default=1100, help="Max image display width")
     ap.add_argument("--max_height", type=int, default=550, help="Max image display height")
+    ap.add_argument(
+        "--order",
+        type=str,
+        default="score_asc",
+        choices=["score_asc", "gt_len_desc"],
+        help="Sample order: score_asc (lowest score first) or gt_len_desc (longest GT first)",
+    )
     return ap.parse_args()
 
 
@@ -602,6 +627,7 @@ def main() -> None:
         inplace=args.inplace,
         max_width=args.max_width,
         max_height=args.max_height,
+        order=args.order,
     )
     app.run()
 
