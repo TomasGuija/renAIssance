@@ -90,7 +90,9 @@ class OCRLightningCTCModule(pl.LightningModule):
         self._pretrained_loaded = False
         self.wandb_log_every_n_epochs = max(0, int(wandb_log_every_n_epochs))
         self.wandb_num_logs = max(1, int(wandb_num_logs))
+        self._train_examples = None
         self._val_examples = None
+        self._wandb_epoch_axis_initialized = False
 
         if self.opt.Prediction != 'CTC':
             raise ValueError('This Lightning module currently supports Prediction=CTC only.')
@@ -189,6 +191,56 @@ class OCRLightningCTCModule(pl.LightningModule):
 
         return img.numpy()
 
+    def _build_wandb_examples(self, wandb, examples_dict):
+        images = examples_dict['images']
+        labels = examples_dict['labels']
+        preds = examples_dict['preds']
+        num_items = min(self.wandb_num_logs, len(labels), images.size(0))
+
+        out = []
+        for i in range(num_items):
+            img = self._tensor_to_wandb_image(images[i])
+            caption = f"gt: {labels[i]}\npred: {preds[i]}"
+            out.append(wandb.Image(img, caption=caption))
+        return out
+
+    def _log_examples_to_wandb(self, split: str, examples_dict):
+        if examples_dict is None:
+            return
+
+        logger = self._pick_wandb_logger()
+        if logger is None:
+            return
+
+        try:
+            import wandb
+        except Exception:
+            return
+
+        examples = self._build_wandb_examples(wandb, examples_dict)
+        if not examples:
+            return
+
+        run = logger.experiment
+        epoch_step = self.current_epoch + 1
+        run.log(
+            {
+                f'{split}/examples': examples,
+                'epoch': epoch_step,
+            },
+        )
+
+    def on_train_epoch_start(self):
+        self._train_examples = None
+
+    def on_train_epoch_end(self):
+        if not self._should_log_wandb_examples():
+            self._train_examples = None
+            return
+
+        self._log_examples_to_wandb('train', self._train_examples)
+        self._train_examples = None
+
     def training_step(self, batch, batch_idx):
         image_tensors, labels = batch
         image = image_tensors.to(self.device)
@@ -197,6 +249,15 @@ class OCRLightningCTCModule(pl.LightningModule):
         preds = self.model(image, text)
         preds_size = torch.IntTensor([preds.size(1)] * image.size(0)).to(image.device)
         loss = self.criterion(preds.log_softmax(2).permute(1, 0, 2), text, preds_size, length)
+
+        if self._should_log_wandb_examples() and batch_idx == 0:
+            _, preds_index = preds.max(2)
+            preds_str = self.converter.decode(preds_index.data, preds_size.data)
+            self._train_examples = {
+                'images': image_tensors.detach().cpu(),
+                'labels': list(labels),
+                'preds': list(preds_str),
+            }
 
         self.log('train/loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=image.size(0))
         return loss
@@ -223,36 +284,7 @@ class OCRLightningCTCModule(pl.LightningModule):
             self._val_examples = None
             return
 
-        logger = self._pick_wandb_logger()
-        if logger is None or self._val_examples is None:
-            self._val_examples = None
-            return
-
-        try:
-            import wandb
-        except Exception:
-            self._val_examples = None
-            return
-
-        images = self._val_examples['images']
-        labels = self._val_examples['labels']
-        preds = self._val_examples['preds']
-        num_items = min(self.wandb_num_logs, len(labels), images.size(0))
-
-        examples = []
-        for i in range(num_items):
-            img = self._tensor_to_wandb_image(images[i])
-            caption = f"gt: {labels[i]}\npred: {preds[i]}"
-            examples.append(wandb.Image(img, caption=caption))
-
-        logger.experiment.log(
-            {
-                'val/examples': examples,
-                'epoch': self.current_epoch + 1,
-            },
-            step=self.global_step,
-        )
-
+        self._log_examples_to_wandb('val', self._val_examples)
         self._val_examples = None
 
     def test_step(self, batch, batch_idx):

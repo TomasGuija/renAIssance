@@ -41,9 +41,7 @@ class OCRLightningCLI(LightningCLI):
         parser.link_arguments('data.character', 'model.character')
         parser.link_arguments('data.batch_max_length', 'model.batch_max_length')
         parser.link_arguments('data.imgH', 'model.imgH')
-        parser.link_arguments('data.imgW', 'model.imgW')
         parser.link_arguments('data.rgb', 'model.rgb')
-        parser.link_arguments('data.PAD', 'model.PAD')
         parser.link_arguments('data.sensitive', 'model.sensitive')
         parser.link_arguments('data.data_filtering_off', 'model.data_filtering_off')
 

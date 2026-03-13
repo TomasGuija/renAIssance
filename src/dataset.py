@@ -44,17 +44,11 @@ class CsvLineDataset(Dataset):
 
     def __getitem__(self, index):
         image_path, label = self.samples[index]
-        try:
-            if self.opt.rgb:
-                image = Image.open(image_path).convert('RGB')
-            else:
-                image = Image.open(image_path).convert('L')
-        except Exception:
-            if self.opt.rgb:
-                image = Image.new('RGB', (self.opt.imgW, self.opt.imgH))
-            else:
-                image = Image.new('L', (self.opt.imgW, self.opt.imgH))
-            label = '[dummy_label]'
+
+        if self.opt.rgb:
+            image = Image.open(image_path).convert('RGB')
+        else:
+            image = Image.open(image_path).convert('L')
 
         return image, label
 
@@ -131,18 +125,6 @@ def create_csv_split_datasets(dataset_csv, image_root, opt, val_pdf_indices='', 
     return train_dataset, val_dataset, test_dataset, split_info
 
 
-class ResizeNormalize(object):
-
-    def __init__(self, size, interpolation=Image.BICUBIC):
-        self.size = size
-        self.interpolation = interpolation
-        self.toTensor = transforms.ToTensor()
-
-    def __call__(self, img):
-        img = img.resize(self.size, self.interpolation)
-        img = self.toTensor(img)
-        img.sub_(0.5).div_(0.5)
-        return img
 
 
 class NormalizePAD(object):
@@ -157,48 +139,35 @@ class NormalizePAD(object):
         img = self.toTensor(img)
         img.sub_(0.5).div_(0.5)
         c, h, w = img.size()
-        Pad_img = torch.FloatTensor(*self.max_size).fill_(0)
+        Pad_img = torch.FloatTensor(*self.max_size).fill_(1.0)  # fill with white
         Pad_img[:, :, :w] = img  # right pad
-        if self.max_size[2] != w:  # add border Pad
-            Pad_img[:, :, w:] = img[:, :, w - 1].unsqueeze(2).expand(c, h, self.max_size[2] - w)
-
         return Pad_img
 
 
 class AlignCollate(object):
 
-    def __init__(self, imgH=32, imgW=100, keep_ratio_with_pad=False):
+    def __init__(self, imgH=32):
         self.imgH = imgH
-        self.imgW = imgW
-        self.keep_ratio_with_pad = keep_ratio_with_pad
 
     def __call__(self, batch):
         batch = filter(lambda x: x is not None, batch)
         images, labels = zip(*batch)
-
-        if self.keep_ratio_with_pad:  # same concept with 'Rosetta' paper
-            resized_max_w = self.imgW
-            input_channel = 3 if images[0].mode == 'RGB' else 1
-            transform = NormalizePAD((input_channel, self.imgH, resized_max_w))
-
-            resized_images = []
-            for image in images:
-                w, h = image.size
-                ratio = w / float(h)
-                if math.ceil(self.imgH * ratio) > self.imgW:
-                    resized_w = self.imgW
-                else:
-                    resized_w = math.ceil(self.imgH * ratio)
-
-                resized_image = image.resize((resized_w, self.imgH), Image.BICUBIC)
-                resized_images.append(transform(resized_image))
-                # resized_image.save('./image_test/%d_test.jpg' % w)
-
-            image_tensors = torch.cat([t.unsqueeze(0) for t in resized_images], 0)
-
-        else:
-            transform = ResizeNormalize((self.imgW, self.imgH))
-            image_tensors = [transform(image) for image in images]
-            image_tensors = torch.cat([t.unsqueeze(0) for t in image_tensors], 0)
-
+        # Dynamically determine max width for this batch
+        widths = []
+        resized_images = []
+        input_channel = 3 if images[0].mode == 'RGB' else 1
+        for image in images:
+            w, h = image.size
+            ratio = w / float(h)
+            resized_w = math.ceil(self.imgH * ratio)
+            widths.append(resized_w)
+        max_w = max(widths)
+        transform = NormalizePAD((input_channel, self.imgH, max_w))
+        for image in images:
+            w, h = image.size
+            ratio = w / float(h)
+            resized_w = math.ceil(self.imgH * ratio)
+            resized_image = image.resize((resized_w, self.imgH), Image.BICUBIC)
+            resized_images.append(transform(resized_image))
+        image_tensors = torch.cat([t.unsqueeze(0) for t in resized_images], 0)
         return image_tensors, labels

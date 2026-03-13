@@ -19,9 +19,7 @@ class OCRDataModule(pl.LightningDataModule):
         batch_size: int = 64,
         batch_max_length: int = 25,
         imgH: int = 32,
-        imgW: int = 1600,
         rgb: bool = False,
-        PAD: bool = True,
         sensitive: bool = False,
         data_filtering_off: bool = False,
         character: str = '0123456789abcdefghijklmnopqrstuvwxyz',
@@ -37,9 +35,7 @@ class OCRDataModule(pl.LightningDataModule):
             batch_size=batch_size,
             batch_max_length=batch_max_length,
             imgH=imgH,
-            imgW=imgW,
             rgb=rgb,
-            PAD=PAD,
             sensitive=sensitive,
             data_filtering_off=data_filtering_off,
             character=character,
@@ -69,7 +65,7 @@ class OCRDataModule(pl.LightningDataModule):
         self.split_info = split_info
 
     def _collate(self):
-        return AlignCollate(imgH=self.opt.imgH, imgW=self.opt.imgW, keep_ratio_with_pad=self.opt.PAD)
+        return AlignCollate(imgH=self.opt.imgH)
 
     def train_dataloader(self):
         return DataLoader(
