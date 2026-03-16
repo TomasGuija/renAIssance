@@ -8,11 +8,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-
 from PIL import Image, ImageTk
 import tkinter as tk
 from tkinter import filedialog, messagebox
-
 try:
     from PIL import ImageGrab
 except Exception:

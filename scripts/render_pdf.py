@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Render all PDFs in a folder into per-page PNG images.
 
@@ -19,10 +18,8 @@ Output:
 """
 
 from __future__ import annotations
-
 import argparse
 from pathlib import Path
-
 import fitz
 
 

@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
 from __future__ import annotations
-
 import argparse
 import csv
 import json
@@ -11,18 +9,11 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
 import numpy as np
 from PIL import Image
-
-# python-docx
 from docx import Document
 
-Image.MAX_IMAGE_PIXELS = None  # or a large number
 
-# -------------------------
-# Kraken segmentation utils (same logic you had)
-# -------------------------
 def clamp_bbox(x1: int, y1: int, x2: int, y2: int, w: int, h: int) -> Tuple[int, int, int, int]:
     x1 = max(0, min(int(x1), w - 1))
     y1 = max(0, min(int(y1), h - 1))
@@ -81,9 +72,6 @@ def run_kraken_segment(png_path: Path, out_json: Path, text_direction: str) -> N
         raise
 
 
-# -------------------------
-# DOCX parsing: "PDF p2" sections
-# -------------------------
 PAGE_EXACT_RE = re.compile(r"^\s*PDF\s+p\s*(\d+)\s*$", re.IGNORECASE)
 PAGE_PREFIX_RE = re.compile(r"^\s*PDF\b", re.IGNORECASE)
 PAGE_NUM_ANYWHERE_RE = re.compile(r"\bp\s*(\d+)\b", re.IGNORECASE)
@@ -152,7 +140,6 @@ def parse_docx_pages(docx_path: Path, max_gt_chars_per_line: int = 0) -> Dict[in
                 if m_any:
                     current_page = int(m_any.group(1))
                     pages.setdefault(current_page, [])
-                # Any 'PDF ...' line is metadata; never GT.
                 continue
 
             if current_page is None:
@@ -161,51 +148,16 @@ def parse_docx_pages(docx_path: Path, max_gt_chars_per_line: int = 0) -> Dict[in
             split_parts = split_long_gt_line(part, max_gt_chars_per_line)
             pages[current_page].extend(split_parts)
 
-    # prune empty
     pages = {k: v for k, v in pages.items() if any(s.strip() for s in v)}
     return pages
 
-# -------------------------
-# Finding page images
-# -------------------------
-IMG_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 
 def find_page_image(pdf_pages_dir: Path, page_num: int) -> Optional[Path]:
-    """
-    Heuristic:
-      1) look for files with the page number in the stem (p2, page2, 0002, etc.)
-      2) else: sort images and use (page_num - 1) index
-    """
-    imgs = [p for p in pdf_pages_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMG_EXTS]
-    if not imgs:
-        return None
-    imgs.sort(key=lambda x: str(x).lower())
+    pattern = re.compile(rf"(?<![1-9]){page_num}\.png$", re.IGNORECASE)
 
-    # Try pattern match by number in stem
-    # accept: p2, _2, -2, 0002, page_0002, etc.
-    candidates: List[Path] = []
-    num = str(page_num)
-    num4 = f"{page_num:04d}"
-    num3 = f"{page_num:03d}"
-    patterns = [
-        re.compile(rf"(?:^|[^0-9]){re.escape(num4)}(?:[^0-9]|$)"),
-        re.compile(rf"(?:^|[^0-9]){re.escape(num3)}(?:[^0-9]|$)"),
-        re.compile(rf"(?:^|[^0-9]){re.escape(num)}(?:[^0-9]|$)"),
-        re.compile(rf"(?:^|[^a-z0-9])p{re.escape(num)}(?:[^a-z0-9]|$)", re.IGNORECASE),
-    ]
-    for p in imgs:
-        stem = p.stem
-        if any(rx.search(stem) for rx in patterns):
-            candidates.append(p)
-
-    if candidates:
-        candidates.sort(key=lambda x: len(x.stem))  # prefer tighter match
-        return candidates[0]
-
-    # Fallback: assume ordered list corresponds to pages starting at 1
-    idx = page_num - 1
-    if 0 <= idx < len(imgs):
-        return imgs[idx]
+    for p in pdf_pages_dir.rglob("*.png"):
+        if p.is_file() and pattern.search(p.name):
+            return p
 
     return None
 
@@ -340,7 +292,6 @@ def main() -> None:
     ap.add_argument("--text_direction", default="horizontal-lr", type=str)
     ap.add_argument("--pad", default=2, type=int)
 
-    ap.add_argument("--ocr_engine", default="tesseract", choices=["tesseract"], help="Pretrained OCR used for draft alignment.")
     ap.add_argument("--tess_lang", default="eng", type=str, help="Tesseract language code(s), e.g. 'eng' or 'spa' or 'eng+spa'.")
     ap.add_argument("--min_score", default=0.15, type=float, help="Minimum similarity score to accept match into training CSV.")
     ap.add_argument("--skip_cost", default=0.85, type=float, help="Alignment skip cost (higher => fewer skips).")
@@ -480,10 +431,7 @@ def main() -> None:
                     crop_img.save(crop_path)
 
                     # OCR draft
-                    if args.ocr_engine == "tesseract":
-                        ocr = ocr_line_pytesseract(crop_img, lang=args.tess_lang)
-                    else:
-                        ocr = ""
+                    ocr = ocr_line_pytesseract(crop_img, lang=args.tess_lang)
 
                     crop_paths.append(crop_path)
                     crop_bboxes.append((x1, y1, x2, y2))
