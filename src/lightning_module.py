@@ -1,61 +1,25 @@
 from __future__ import annotations
-
 from types import SimpleNamespace
-
 import lightning.pytorch as pl
 import torch
 from lightning.pytorch.loggers import WandbLogger
-
 from model import Model
 from utils import CTCLabelConverter
-
-
-def _levenshtein(a: str, b: str) -> int:
-    if a == b:
-        return 0
-    if len(a) == 0:
-        return len(b)
-    if len(b) == 0:
-        return len(a)
-
-    prev = list(range(len(b) + 1))
-    for i, ca in enumerate(a, start=1):
-        cur = [i]
-        for j, cb in enumerate(b, start=1):
-            ins = cur[j - 1] + 1
-            delete = prev[j] + 1
-            replace = prev[j - 1] + (0 if ca == cb else 1)
-            cur.append(min(ins, delete, replace))
-        prev = cur
-    return prev[-1]
 
 
 class OCRLightningCTCModule(pl.LightningModule):
     def __init__(
         self,
-        character: str,
-        batch_max_length: int = 25,
-        imgH: int = 32,
-        imgW: int = 1600,
-        rgb: bool = False,
-        PAD: bool = True,
-        sensitive: bool = False,
-        data_filtering_off: bool = False,
-        Transformation: str = 'None',
-        FeatureExtraction: str = 'ResNet',
-        SequenceModeling: str = 'BiLSTM',
-        Prediction: str = 'CTC',
-        num_fiducial: int = 20,
-        input_channel: int = 1,
+        character: str,                   # Could be empty, automatically linked to character in the data configuration. 
+        batch_max_length: int = 25,       # Linked to data configuration
+        imgH: int = 32,                   # Linked to data configuration
+        rgb: bool = False,                # Linked to data configuration
+        sensitive: bool = False,          # Linked to data configuration
+        data_filtering_off: bool = False, # Linked to data configuration
         output_channel: int = 512,
         hidden_size: int = 256,
-        adam: bool = True,
         lr: float = 1e-4,
-        beta1: float = 0.9,
-        rho: float = 0.95,
-        eps: float = 1e-8,
         pretrained_path: str = '',
-        finetune: bool = True,
         wandb_log_every_n_epochs: int = 0,
         wandb_num_logs: int = 8,
     ):
@@ -65,97 +29,51 @@ class OCRLightningCTCModule(pl.LightningModule):
             character=character,
             batch_max_length=batch_max_length,
             imgH=imgH,
-            imgW=imgW,
             rgb=rgb,
-            PAD=PAD,
             sensitive=sensitive,
             data_filtering_off=data_filtering_off,
-            Transformation=Transformation,
-            FeatureExtraction=FeatureExtraction,
-            SequenceModeling=SequenceModeling,
-            Prediction=Prediction,
-            num_fiducial=num_fiducial,
-            input_channel=input_channel,
+            input_channel=1 if not rgb else 3,
             output_channel=output_channel,
             hidden_size=hidden_size,
-            adam=adam,
             lr=lr,
-            beta1=beta1,
-            rho=rho,
-            eps=eps,
         )
 
         self.pretrained_path = pretrained_path
-        self.finetune = finetune
         self._pretrained_loaded = False
-        self.wandb_log_every_n_epochs = max(0, int(wandb_log_every_n_epochs))
-        self.wandb_num_logs = max(1, int(wandb_num_logs))
+        self.wandb_log_every_n_epochs = wandb_log_every_n_epochs
+        self.wandb_num_logs = wandb_num_logs
         self._train_examples = None
         self._val_examples = None
-        self._wandb_epoch_axis_initialized = False
-
-        if self.opt.Prediction != 'CTC':
-            raise ValueError('This Lightning module currently supports Prediction=CTC only.')
 
         self.converter = CTCLabelConverter(self.opt.character)
         self.opt.num_class = len(self.converter.character)
-        if self.opt.rgb:
-            self.opt.input_channel = 3
-
         self.model = Model(self.opt)
         self.criterion = torch.nn.CTCLoss(zero_infinity=True)
 
     def on_fit_start(self):
         if self.pretrained_path and not self._pretrained_loaded:
             state_dict = torch.load(self.pretrained_path, map_location='cpu')
-            strict = not self.finetune
-            self.model.load_state_dict(state_dict, strict=strict)
+            self.model.load_state_dict(state_dict, strict=False)
             self._pretrained_loaded = True
-            self.print(f'Loaded pretrained weights from: {self.pretrained_path} (strict={strict})')
+            self.print(f'Loaded pretrained weights from: {self.pretrained_path} (strict=False)')
 
-    def forward(self, image, text):
-        return self.model(image, text)
+    def forward(self, image):
+        return self.model(image)
 
     def _ctc_loss_and_decode(self, image, labels):
         text_for_loss, length_for_loss = self.converter.encode(labels, batch_max_length=self.opt.batch_max_length)
-        text_for_pred = torch.LongTensor(image.size(0), self.opt.batch_max_length + 1).fill_(0).to(image.device)
-
-        preds = self.model(image, text_for_pred)
-        preds_size = torch.IntTensor([preds.size(1)] * image.size(0)).to(image.device)
-
+        preds = self.model(image)
+        preds_size = torch.full(
+            size=(image.size(0),),
+            fill_value=preds.size(1),
+            dtype=torch.long,
+            device=image.device,
+        )
         loss = self.criterion(preds.log_softmax(2).permute(1, 0, 2), text_for_loss, preds_size, length_for_loss)
 
         _, preds_index = preds.max(2)
-        preds_str = self.converter.decode(preds_index.data, preds_size.data)
+        preds_str = self.converter.decode(preds_index.detach(), preds_size.detach())
         return loss, preds_str
-
-    def _compute_batch_metrics(self, preds_str, labels):
-        correct = 0
-        norm_ed_sum = 0.0
-
-        for gt, pred in zip(labels, preds_str):
-            if self.opt.sensitive and self.opt.data_filtering_off:
-                gt_cmp = gt.lower()
-                pred_cmp = pred.lower()
-            else:
-                gt_cmp = gt
-                pred_cmp = pred
-
-            if pred_cmp == gt_cmp:
-                correct += 1
-
-            if len(gt_cmp) == 0 or len(pred_cmp) == 0:
-                norm_ed = 0.0
-            elif len(gt_cmp) > len(pred_cmp):
-                norm_ed = 1.0 - (_levenshtein(pred_cmp, gt_cmp) / len(gt_cmp))
-            else:
-                norm_ed = 1.0 - (_levenshtein(pred_cmp, gt_cmp) / len(pred_cmp))
-            norm_ed_sum += norm_ed
-
-        batch_size = max(len(labels), 1)
-        acc = correct / batch_size
-        norm_ed_avg = norm_ed_sum / batch_size
-        return acc, norm_ed_avg
 
     def _should_log_wandb_examples(self) -> bool:
         if self.wandb_log_every_n_epochs <= 0:
@@ -175,7 +93,6 @@ class OCRLightningCTCModule(pl.LightningModule):
 
     @staticmethod
     def _tensor_to_wandb_image(image_tensor: torch.Tensor):
-        # Input tensor is normalized to [-1, 1]. Convert to uint8 HWC for W&B.
         img = image_tensor.detach().float().cpu()
         img = (img + 1.0) * 0.5
         img = torch.clamp(img, 0.0, 1.0)
@@ -230,9 +147,6 @@ class OCRLightningCTCModule(pl.LightningModule):
             },
         )
 
-    def on_train_epoch_start(self):
-        self._train_examples = None
-
     def on_train_epoch_end(self):
         if not self._should_log_wandb_examples():
             self._train_examples = None
@@ -243,42 +157,20 @@ class OCRLightningCTCModule(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         image_tensors, labels = batch
-        image = image_tensors.to(self.device)
+        images = image_tensors.to(self.device)
 
-        text, length = self.converter.encode(labels, batch_max_length=self.opt.batch_max_length)
-        preds = self.model(image, text)
-        preds_size = torch.IntTensor([preds.size(1)] * image.size(0)).to(image.device)
-        loss = self.criterion(preds.log_softmax(2).permute(1, 0, 2), text, preds_size, length)
+        loss, preds_str = self._ctc_loss_and_decode(images, labels)
 
         if self._should_log_wandb_examples() and batch_idx == 0:
-            _, preds_index = preds.max(2)
-            preds_str = self.converter.decode(preds_index.data, preds_size.data)
             self._train_examples = {
                 'images': image_tensors.detach().cpu(),
                 'labels': list(labels),
                 'preds': list(preds_str),
             }
 
-        self.log('train/loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=image.size(0))
+        self.log('train/loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=images.size(0))
         return loss
-
-    def validation_step(self, batch, batch_idx):
-        image_tensors, labels = batch
-        image = image_tensors.to(self.device)
-        loss, preds_str = self._ctc_loss_and_decode(image, labels)
-        acc, norm_ed = self._compute_batch_metrics(preds_str, labels)
-
-        self.log('val/loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=image.size(0))
-        self.log('val/accuracy', acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=image.size(0))
-        self.log('val/norm_ed', norm_ed, on_step=False, on_epoch=True, prog_bar=True, batch_size=image.size(0))
-
-        if self._should_log_wandb_examples() and batch_idx == 0:
-            self._val_examples = {
-                'images': image_tensors.detach().cpu(),
-                'labels': list(labels),
-                'preds': list(preds_str),
-            }
-
+    
     def on_validation_epoch_end(self):
         if not self._should_log_wandb_examples():
             self._val_examples = None
@@ -287,20 +179,22 @@ class OCRLightningCTCModule(pl.LightningModule):
         self._log_examples_to_wandb('val', self._val_examples)
         self._val_examples = None
 
-    def test_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx):
         image_tensors, labels = batch
-        image = image_tensors.to(self.device)
-        loss, preds_str = self._ctc_loss_and_decode(image, labels)
-        acc, norm_ed = self._compute_batch_metrics(preds_str, labels)
+        images = image_tensors.to(self.device)
 
-        self.log('test/loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=image.size(0))
-        self.log('test/accuracy', acc, on_step=False, on_epoch=True, prog_bar=True, batch_size=image.size(0))
-        self.log('test/norm_ed', norm_ed, on_step=False, on_epoch=True, prog_bar=True, batch_size=image.size(0))
+        loss, preds_str = self._ctc_loss_and_decode(images, labels)
+
+        if self._should_log_wandb_examples() and batch_idx == 0:
+            self._val_examples = {
+                'images': image_tensors.detach().cpu(),
+                'labels': list(labels),
+                'preds': list(preds_str),
+            }
+
+        self.log('val/loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=images.size(0))
 
     def configure_optimizers(self):
         filtered_parameters = [p for p in self.model.parameters() if p.requires_grad]
-        if self.opt.adam:
-            optimizer = torch.optim.Adam(filtered_parameters, lr=self.opt.lr, betas=(self.opt.beta1, 0.999))
-        else:
-            optimizer = torch.optim.Adadelta(filtered_parameters, lr=self.opt.lr, rho=self.opt.rho, eps=self.opt.eps)
+        optimizer = torch.optim.Adam(filtered_parameters, lr=self.opt.lr, betas=(0.9, 0.999))
         return optimizer

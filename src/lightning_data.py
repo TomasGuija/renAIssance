@@ -1,9 +1,8 @@
 from __future__ import annotations
-
 from types import SimpleNamespace
-
 import lightning.pytorch as pl
 from torch.utils.data import DataLoader
+
 
 from dataset import AlignCollate, create_csv_split_datasets
 
@@ -13,8 +12,8 @@ class OCRDataModule(pl.LightningDataModule):
         self,
         dataset_csv: str,
         image_root: str,
-        val_pdf_indices: str = '',
-        test_pdf_indices: str = '',
+        val_indices: list = [],
+        test_indices: list = [], # These remain unused for both training and validation. 
         workers: int = 4,
         batch_size: int = 64,
         batch_max_length: int = 25,
@@ -29,8 +28,8 @@ class OCRDataModule(pl.LightningDataModule):
         self.opt = SimpleNamespace(
             dataset_csv=dataset_csv,
             image_root=image_root,
-            val_pdf_indices=val_pdf_indices,
-            test_pdf_indices=test_pdf_indices,
+            val_indices=val_indices,
+            test_indices=test_indices,
             workers=workers,
             batch_size=batch_size,
             batch_max_length=batch_max_length,
@@ -50,14 +49,14 @@ class OCRDataModule(pl.LightningDataModule):
             dataset_csv=self.opt.dataset_csv,
             image_root=self.opt.image_root,
             opt=self.opt,
-            val_pdf_indices=self.opt.val_pdf_indices,
-            test_pdf_indices=self.opt.test_pdf_indices,
+            val_indices=self.opt.val_indices,
+            test_indices=self.opt.test_indices,
         )
 
         if len(train_dataset) == 0:
             raise ValueError('Training split is empty. Adjust val/test pdf indices.')
         if len(val_dataset) == 0:
-            raise ValueError('Validation split is empty. Adjust val_pdf_indices.')
+            raise ValueError('Validation split is empty. Adjust val_indices.')
 
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset

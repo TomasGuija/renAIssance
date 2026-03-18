@@ -316,7 +316,6 @@ def main() -> None:
 
     csv_path = out_root / "dataset.csv"
     unassigned_path = out_root / "unassigned.jsonl"
-    h5_path = out_root / "dataset.h5"
 
     # Collect docx files
     docx_files = sorted(docx_root.glob("*.docx"), key=lambda p: p.name.lower())
@@ -333,7 +332,6 @@ def main() -> None:
         "page_image_rel",
     ]
 
-    rows_for_h5: List[Dict[str, Any]] = []
     unassigned_records: List[Dict[str, Any]] = []
 
     csv_exists = csv_path.exists()
@@ -471,7 +469,7 @@ def main() -> None:
                                 f"OCR: {ocr_text}\n\n"
                             )
 
-                # Save accepted matches to CSV + H5 rows
+                # Save accepted matches to CSV
                 for m in matches:
                     if m.score < args.min_score:
                         continue
@@ -495,7 +493,6 @@ def main() -> None:
                         "page_image_rel": page_image_rel,
                     }
                     writer.writerow(row)
-                    rows_for_h5.append(row)
 
                 # Record unassigned items explicitly
                 if unassigned_gt:
@@ -534,33 +531,7 @@ def main() -> None:
         for rec in unassigned_records:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    # Rebuild H5 from full CSV so reruns/appends remain consistent
-    all_rows_for_h5: List[Dict[str, Any]] = []
-    if csv_path.exists() and csv_path.stat().st_size > 0:
-        with csv_path.open("r", newline="", encoding="utf-8") as fcsv_in:
-            reader = csv.DictReader(fcsv_in)
-            all_rows_for_h5 = list(reader)
-
-    # Write HDF5 (optional but requested)
-    try:
-        import h5py  # type: ignore
-        with h5py.File(h5_path, "w") as h5:
-            # store as variable-length UTF-8 strings
-            dt = h5py.string_dtype(encoding="utf-8")
-            h5.create_dataset("pdf_id", data=np.array([r["pdf_id"] for r in all_rows_for_h5], dtype=object), dtype=dt)
-            h5.create_dataset("page_num", data=np.array([int(r["page_num"]) for r in all_rows_for_h5], dtype=np.int32))
-            h5.create_dataset("page_id", data=np.array([r["page_id"] for r in all_rows_for_h5], dtype=object), dtype=dt)
-            h5.create_dataset("crop_rel", data=np.array([r["crop_rel"] for r in all_rows_for_h5], dtype=object), dtype=dt)
-            h5.create_dataset("gt_text", data=np.array([r["gt_text"] for r in all_rows_for_h5], dtype=object), dtype=dt)
-            h5.create_dataset("ocr_text", data=np.array([r["ocr_text"] for r in all_rows_for_h5], dtype=object), dtype=dt)
-            h5.create_dataset("score", data=np.array([float(r["score"]) for r in all_rows_for_h5], dtype=np.float32))
-            h5.create_dataset("bbox", data=np.array([[r["bbox_x1"], r["bbox_y1"], r["bbox_x2"], r["bbox_y2"]] for r in all_rows_for_h5], dtype=np.int32))
-            h5.create_dataset("kraken_line_i", data=np.array([int(r["kraken_line_i"]) for r in all_rows_for_h5], dtype=np.int32))
-            h5.create_dataset("page_image_rel", data=np.array([r["page_image_rel"] for r in all_rows_for_h5], dtype=object), dtype=dt)
-    except ImportError:
-        print("[WARN] h5py not installed; skipping dataset.h5. Install with: pip install h5py")
-
-    print(f"\nWrote:\n  {csv_path}\n  {unassigned_path}\n  {h5_path} (if h5py installed)\n  images under: {images_out}")
+    print(f"\nWrote:\n  {csv_path}\n  {unassigned_path}\n  images under: {images_out}")
 
 
 if __name__ == "__main__":

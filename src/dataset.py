@@ -15,13 +15,16 @@ class CsvLineDataset(Dataset):
         self.opt = opt
         self.image_root = Path(image_root).expanduser().resolve()
         self.samples = []
-        out_of_char = f'[^{self.opt.character}]'
+
+        allowed_chars = re.escape(self.opt.character)
+        invalid_char_pattern = re.compile(f'[^{allowed_chars}]')
 
         for row in rows:
             raw_label = (row.get('gt_text') or '').strip()
             if not self.opt.sensitive:
                 raw_label = raw_label.lower()
-            label = re.sub(out_of_char, '', raw_label)
+            
+            label = invalid_char_pattern.sub('', raw_label)
 
             if not self.opt.data_filtering_off:
                 if len(label) == 0:
@@ -30,12 +33,11 @@ class CsvLineDataset(Dataset):
                     continue
 
             crop_rel = (row.get('crop_rel') or '').strip()
+
             if not crop_rel:
                 continue
 
             image_path = self.image_root / crop_rel
-            if not image_path.exists() and crop_rel.startswith('images/'):
-                image_path = self.image_root / crop_rel[len('images/'):]
 
             self.samples.append((image_path, label))
 
@@ -53,18 +55,6 @@ class CsvLineDataset(Dataset):
         return image, label
 
 
-def _parse_index_string(index_string):
-    if not index_string:
-        return set()
-    values = set()
-    for token in index_string.split(','):
-        t = token.strip()
-        if not t:
-            continue
-        values.add(int(t))
-    return values
-
-
 def _read_dataset_csv(dataset_csv):
     rows = []
     with open(dataset_csv, 'r', newline='', encoding='utf-8') as handle:
@@ -75,21 +65,18 @@ def _read_dataset_csv(dataset_csv):
     return rows
 
 
-def create_csv_split_datasets(dataset_csv, image_root, opt, val_pdf_indices='', test_pdf_indices=''):
+def create_csv_split_datasets(dataset_csv, image_root, opt, val_indices=[], test_indices=[]):
     rows = _read_dataset_csv(dataset_csv)
     if not rows:
         raise ValueError(f'No valid rows found in CSV: {dataset_csv}')
+    
+    val_idx_set = set(val_indices)
+    test_idx_set = set(test_indices)
 
     pdf_ids = sorted({row['pdf_id'] for row in rows})
-    val_idx_set = _parse_index_string(val_pdf_indices)
-    test_idx_set = _parse_index_string(test_pdf_indices)
-
-    overlap = val_idx_set.intersection(test_idx_set)
-    if overlap:
-        raise ValueError(f'Validation and test indices overlap: {sorted(overlap)}')
 
     max_idx = len(pdf_ids) - 1
-    for idx in sorted(val_idx_set.union(test_idx_set)):
+    for idx in sorted(val_idx_set | test_idx_set):
         if idx < 0 or idx > max_idx:
             raise ValueError(f'PDF index out of range: {idx}. Valid range is 0..{max_idx}')
 
@@ -125,23 +112,19 @@ def create_csv_split_datasets(dataset_csv, image_root, opt, val_pdf_indices='', 
     return train_dataset, val_dataset, test_dataset, split_info
 
 
-
-
 class NormalizePAD(object):
 
-    def __init__(self, max_size, PAD_type='right'):
-        self.toTensor = transforms.ToTensor()
+    def __init__(self, max_size):
         self.max_size = max_size
-        self.max_width_half = math.floor(max_size[2] / 2)
-        self.PAD_type = PAD_type
 
     def __call__(self, img):
-        img = self.toTensor(img)
+        img = transforms.ToTensor()(img)
         img.sub_(0.5).div_(0.5)
-        c, h, w = img.size()
-        Pad_img = torch.FloatTensor(*self.max_size).fill_(1.0)  # fill with white
-        Pad_img[:, :, :w] = img  # right pad
-        return Pad_img
+
+        _, _, w = img.size()
+        pad_img = torch.full(self.max_size, 1.0, dtype=img.dtype, device=img.device)
+        pad_img[:, :, :w] = img
+        return pad_img
 
 
 class AlignCollate(object):
@@ -150,24 +133,23 @@ class AlignCollate(object):
         self.imgH = imgH
 
     def __call__(self, batch):
-        batch = filter(lambda x: x is not None, batch)
+        batch = [x for x in batch if x is not None]
         images, labels = zip(*batch)
-        # Dynamically determine max width for this batch
-        widths = []
-        resized_images = []
         input_channel = 3 if images[0].mode == 'RGB' else 1
+
+        resized_widths = []
         for image in images:
             w, h = image.size
             ratio = w / float(h)
-            resized_w = math.ceil(self.imgH * ratio)
-            widths.append(resized_w)
-        max_w = max(widths)
+            resized_widths.append(math.ceil(self.imgH * ratio))
+            
+        max_w = max(resized_widths)
         transform = NormalizePAD((input_channel, self.imgH, max_w))
-        for image in images:
-            w, h = image.size
-            ratio = w / float(h)
-            resized_w = math.ceil(self.imgH * ratio)
+
+        resized_images = []
+        for image, resized_w in zip(images, resized_widths):
             resized_image = image.resize((resized_w, self.imgH), Image.BICUBIC)
             resized_images.append(transform(resized_image))
-        image_tensors = torch.cat([t.unsqueeze(0) for t in resized_images], 0)
+
+        image_tensors = torch.stack(resized_images, dim=0)
         return image_tensors, labels
