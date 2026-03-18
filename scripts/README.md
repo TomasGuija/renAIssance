@@ -280,8 +280,6 @@ Place the downloaded `lid.176.bin` file in the project directory or update the p
 
 [1] Joulin, A., Grave, E., Bojanowski, P., & Mikolov, T. (2016).  
 **Bag of Tricks for Efficient Text Classification.**  
-https://arxiv.org/abs/1607.01759
 
 [2] Joulin, A., Grave, E., Bojanowski, P., Douze, M., Jégou, H., & Mikolov, T. (2016).  
 **FastText.zip: Compressing text classification models.**  
-https://arxiv.org/abs/1612.03651

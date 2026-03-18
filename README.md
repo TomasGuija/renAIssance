@@ -76,5 +76,71 @@ to resume training from a pretrained model.
 
 ## Inference and LLM Post-Processing
 
-You may find the pipeline for using a pretrained model 
+An example inference pipeline is provided in [`inference.ipynb`](notebooks/inference.ipynb).
 
+The notebook demonstrates the full workflow for transcribing a historical page:
+
+1. **PDF page processing** – extracting page images from a PDF document.
+2. **Line segmentation** – detecting and isolating individual text lines.
+3. **OCR inference** – running a pretrained OCR checkpoint on the extracted line images.
+4. **LLM post-processing** – correcting systematic OCR errors using a locally hosted language model.
+
+The notebook is intended as a practical guide for reproducing the inference pipeline and adapting it to new documents.
+
+---
+
+# Results
+
+A model was trained using the dataset constructed for this project. Due to the limited amount of available data, the dataset was split at the **document level**, using **five documents for training** and **one document for validation**.
+
+Details about the selected hyperparameters can be found in the [`training configuration`](configs/train_lightning.yaml) and the model implementation in [`src/lightning_module.py`](src/lightning_module.py).
+
+---
+
+## Qualitative Evaluation
+
+To qualitatively evaluate the model, see the [`inference notebook`](notebooks/inference.ipynb), which demonstrates the full transcription pipeline. The notebook performs:
+
+1. line segmentation on page images  
+2. OCR prediction for each line  
+3. LLM-based post-processing  
+
+---
+
+## Quantitative Evaluation
+
+For quantitative evaluation, I measured the **Character Error Rate (CER)** using the [`Levenshtein distance`](https://pypi.org/project/python-Levenshtein/) between predicted text and ground-truth labels.
+
+Evaluation is performed using:
+
+[`src/evaluate_ocr.py`](src/evaluate_ocr.py)
+
+The evaluation was conducted on the validation document:
+
+**Covarrubias – *Tesoro de la lengua***.
+
+The resulting **CER was 0.1868**.
+
+Due to the limited amount of available training data, the model exhibits a clear tendency to **overfit**. When evaluated on the training split (containing the remaining five documents), the resulting **CER is 0.0264**, which is significantly lower than the validation CER.
+
+## Potential improvements
+
+## Future Work
+
+Exploring broader improvements in OCR architectures is outside the scope of this project, whose primary objective was to design and validate a complete OCR pipeline, covering all stages from dataset construction and preprocessing to model training, inference, and LLM-based post-processing.
+
+However, one important component that has not yet been incorporated into the current pipeline is **data augmentation**. Due to the limited size of the available dataset and the clear overfitting observed during training, the model would likely benefit significantly from augmentation techniques designed to increase the variability of the training data.
+
+In the context of historical document OCR, several augmentation strategies could be particularly useful, such as **geometric transformations**, **photometric augmentations** and **synthetic noise and artifacts**.
+
+These augmentations could be incorporated directly into the existing **PyTorch data loading pipeline**, allowing transformations to be applied dynamically during training. This would increase the effective diversity of the training set without requiring additional annotated data.
+
+# References
+
+[1] Baek, J., Kim, G., Lee, J., Park, S., Han, D., Yun, S., Oh, S. J., & Lee, H. (2019).  
+**What Is Wrong With Scene Text Recognition Model Comparisons? Dataset and Model Analysis.**  
+Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV).
+
+[2] Biewald, L. (2020).  
+**Experiment Tracking with Weights and Biases.**  
+Software available at https://www.wandb.com/.
