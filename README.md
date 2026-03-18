@@ -95,7 +95,6 @@ A model was trained using the dataset constructed for this project. Due to the l
 
 Details about the selected hyperparameters can be found in the [`training configuration`](configs/train_lightning.yaml) and the model implementation in [`src/lightning_module.py`](src/lightning_module.py).
 
----
 
 ## Qualitative Evaluation
 
@@ -105,7 +104,6 @@ To qualitatively evaluate the model, see the [`inference notebook`](notebooks/in
 2. OCR prediction for each line  
 3. LLM-based post-processing  
 
----
 
 ## Quantitative Evaluation
 
@@ -123,9 +121,8 @@ The resulting **CER was 0.1868**.
 
 Due to the limited amount of available training data, the model exhibits a clear tendency to **overfit**. When evaluated on the training split (containing the remaining five documents), the resulting **CER is 0.0264**, which is significantly lower than the validation CER.
 
-## Potential improvements
 
-## Future Work
+## Potential improvements
 
 Exploring broader improvements in OCR architectures is outside the scope of this project, whose primary objective was to design and validate a complete OCR pipeline, covering all stages from dataset construction and preprocessing to model training, inference, and LLM-based post-processing.
 
@@ -134,6 +131,8 @@ However, one important component that has not yet been incorporated into the cur
 In the context of historical document OCR, several augmentation strategies could be particularly useful, such as **geometric transformations**, **photometric augmentations** and **synthetic noise and artifacts**.
 
 These augmentations could be incorporated directly into the existing **PyTorch data loading pipeline**, allowing transformations to be applied dynamically during training. This would increase the effective diversity of the training set without requiring additional annotated data.
+
+---
 
 # References
 
