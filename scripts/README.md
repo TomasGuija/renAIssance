@@ -17,6 +17,7 @@ The dataset is constructed in the following stages:
 5. Remove incomplete annotations.  
 6. Normalize punctuation
 7. Filter the dataset to keep only Spanish sentences
+8. Remove accents from the labels
 
 
 ## 1. Render PDF Pages
@@ -209,6 +210,21 @@ Language detection is performed using a pretrained **FastText language identific
 
 The script predicts the language of each ground-truth string and keeps only rows where the predicted language is Spanish (`es`), removing al Latin samples.
 
+## 8. Removing Accents
+
+When defining the character set for the OCR model, a deliberate design decision was made to remove all accents from vowels, while preserving the characters `ñ` and `Ñ`. This choice is motivated by both linguistic and practical considerations.
+
+From a corpus analysis perspective, the original annotations indicate that accent usage in the source documents is often inconsistent, so they don't add much infomation. 
+
+From a modeling standpoint, retaining accented vowels would increase the vocabulary size by ten additional symbols (one for each accented vowel in both lowercase and uppercase), thereby increasing the complexity of the recognition task. Given the limited size of the dataset and the observed variability in accent usage, this added complexity is not justified by a proportional gain in transcription quality.
+
+Therefore, all accented vowels are systematically normalized to their unaccented counterparts (e.g., `á → a`, `É → E`), while `ñ` and `Ñ` are preserved. This normalization reduces label noise and simplifies the output space.
+
+The preprocessing step is implemented using the following script:
+
+```
+scripts/remove_accents.py
+```
 
 ## Final Dataset
 
