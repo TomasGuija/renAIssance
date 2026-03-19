@@ -36,6 +36,10 @@ This repository contains the code used for:
 All the code for creating the training dataset can be found in the
 [`scripts`](scripts/) folder, which includes a detailed [`README.md`](scripts/README.md) describing the full process.
 
+Data sources (may not be currently available): 
+- Prints: [OneDriveLink](https://bama365-my.sharepoint.com/personal/xgranja_ua_edu/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Fxgranja%5Fua%5Fedu%2FDocuments%2FUA%2F1%2E%20Research%2FAI%2FHumanAI%2FGSoC%2026%2F0%2E%20Test%2FTest%20sources%2FPrint&viewid=aeb9535d%2D9751%2D4642%2D912a%2Dc16ad99be40c)
+- Transcriptions: [OneDriveLink](https://bama365-my.sharepoint.com/personal/xgranja_ua_edu/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Fxgranja%5Fua%5Fedu%2FDocuments%2FUA%2F1%2E%20Research%2FAI%2FHumanAI%2FGSoC%2026%2F0%2E%20Test%2FTest%20transcriptions%2FPrint&viewid=aeb9535d%2D9751%2D4642%2D912a%2Dc16ad99be40c)
+
 ## OCR Recognition
 
 A neural OCR model is trained on the dataset of historical Spanish prints constructed for this project. The model is designed purely for **text transcription**, taking as input images representing **individual lines of text**.
