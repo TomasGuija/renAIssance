@@ -4,21 +4,31 @@ import math
 import torch
 from pathlib import Path
 from PIL import Image
-import numpy as np
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
-
+from torchvision.transforms import v2
 
 class CsvLineDataset(Dataset):
 
-    def __init__(self, rows, opt, image_root):
+    def __init__(self, rows, opt, image_root, is_train=False):
         self.opt = opt
         self.image_root = Path(image_root).expanduser().resolve()
         self.samples = []
+        self.is_train = is_train
 
         allowed_chars = re.escape(self.opt.character)
         invalid_char_pattern = re.compile(f'[^{allowed_chars}]')
 
+        self.aug = v2.Compose([
+            v2.RandomApply([
+                v2.GaussianBlur(kernel_size=3, sigma=(0.1, 0.6))
+            ], p=0.25),
+
+            v2.RandomApply([
+                v2.RandomAdjustSharpness(sharpness_factor=1.5)
+            ], p=0.25),
+        ])
+        
         for row in rows:
             raw_label = (row.get('gt_text') or '').strip()
             if not self.opt.sensitive:
@@ -51,6 +61,9 @@ class CsvLineDataset(Dataset):
             image = Image.open(image_path).convert('RGB')
         else:
             image = Image.open(image_path).convert('L')
+        
+        if self.is_train:
+            image = self.aug(image)
 
         return image, label
 
@@ -96,9 +109,9 @@ def create_csv_split_datasets(dataset_csv, image_root, opt, val_indices=[], test
         else:
             train_rows.append(row)
 
-    train_dataset = CsvLineDataset(train_rows, opt=opt, image_root=image_root)
-    val_dataset = CsvLineDataset(val_rows, opt=opt, image_root=image_root)
-    test_dataset = CsvLineDataset(test_rows, opt=opt, image_root=image_root)
+    train_dataset = CsvLineDataset(train_rows, opt=opt, image_root=image_root, is_train=True)
+    val_dataset = CsvLineDataset(val_rows, opt=opt, image_root=image_root, is_train=False)
+    test_dataset = CsvLineDataset(test_rows, opt=opt, image_root=image_root, is_train=False)
 
     split_info = {
         'pdf_ids': pdf_ids,

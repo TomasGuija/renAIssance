@@ -5,7 +5,7 @@ from pathlib import Path
 # Paths
 INPUT_CSV = "data/filtered_dataset.csv"
 FASTTEXT_MODEL = "lid.176.bin"
-OUTPUT_CSV = "data/filtered_spanish_dataset.csv"
+OUTPUT_CSV = "data/filtered_spanish_dataset_ordered.csv"
 
 # Load model
 model = fasttext.load_model(FASTTEXT_MODEL)
@@ -39,8 +39,10 @@ def main():
     # Keep only Spanish
     spanish_df = df[df["pred_lang"] == "es"].copy()
 
-    # Optional: sort by confidence descending
-    spanish_df = spanish_df.sort_values("pred_prob", ascending=False)
+    spanish_df = spanish_df.sort_values(
+        by=["pdf_id", "page_num", "kraken_line_i"],
+        ascending=[True, True, True]
+    )
 
     # Save
     spanish_df.to_csv(OUTPUT_CSV, index=False)
