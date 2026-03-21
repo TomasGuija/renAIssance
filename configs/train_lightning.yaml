@@ -25,7 +25,7 @@ model:
   wandb_num_logs: 8
 
 data:
-  dataset_csv: data/filtered_spanish_dataset.csv
+  dataset_csv: data/filtered_spanish_dataset_no_accents.csv
   image_root: data
   val_indices: [1]
   test_indices: []
@@ -36,4 +36,4 @@ data:
   rgb: false
   sensitive: True
   data_filtering_off: False
-  character: "!&(),-.0123456789:;?ABCDEFGHIJLMNOPQRSTUVXYZabcdefghijlmnopqrstuvxyz§Ñáçéíñó– "
+  character: "¡!¿?&()-:;.,0123456789ABCDEFGHIJLMNOPQRSTUVXYZabcdefghijlmnopqrstuvxyzÑñç "

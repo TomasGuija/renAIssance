@@ -31,6 +31,7 @@ def load_model_from_checkpoint(ckpt_path, device):
 
     hparams = ckpt["hyper_parameters"]
     opt = SimpleNamespace(**hparams)
+    opt.input_channel = 1  # Set to 1 for grayscale input
 
     converter = CTCLabelConverter(opt.character)
     opt.num_class = len(converter.character)

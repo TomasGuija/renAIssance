@@ -248,19 +248,15 @@ For instance, some documents follow grammatical conventions that differ from mod
 
 A typical example concerns the historical use of the letter *f*, which in some texts corresponds to the modern letter *s*. In some cases, the transcriber preserves the original letter *f*, while in others it is normalized to *s*. As a result, the same visual character in the image may correspond to different ground-truth labels across samples. This inconsistency may make it harder for the model to reliably distinguish between these two letters.
 
-<figure>
+<div align="center">
   <img src="../images/inconsistent_example_1.png" alt="Inconsistent transcription example" width="600">
-  <figcaption style="text-align:center;">
-    GT label: assistencia a los Templos; la piedad
-  </figcaption>
-</figure>
+  <p><em>GT label: assistencia a los Templos; la piedad</em></p>
+</div>
 
-<figure>
+<div align="center">
   <img src="../images/inconsistent_example_2.png" alt="Inconsistent transcription example" width="600">
-  <figcaption style="text-align:center;">
-    GT label: duria fue soberana dignacion, y
-  </figcaption>
-</figure>
+  <p><em>GT label: duria fue soberana dignacion, y</em></p>
+</div>
 
 ---
 

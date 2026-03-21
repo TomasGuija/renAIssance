@@ -196,5 +196,28 @@ class OCRLightningCTCModule(pl.LightningModule):
 
     def configure_optimizers(self):
         filtered_parameters = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.Adam(filtered_parameters, lr=self.opt.lr, betas=(0.9, 0.999))
-        return optimizer
+
+        optimizer = torch.optim.Adam(
+            filtered_parameters,
+            lr=self.opt.lr,
+            betas=(0.9, 0.999),
+        )
+
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",     
+            factor=0.5,     
+            patience=5,      
+            threshold=1e-4,
+            min_lr=1e-7,
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val/loss",
+                "interval": "epoch",
+                "frequency": 1,
+            },
+        }
