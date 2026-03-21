@@ -76,7 +76,7 @@ Optionally, you may use
 --ckpt_path path/to/checkpoint
 ```
 
-to resume training from a pretrained model. 
+to resume training from a pretrained model. To further see how training is done, check [src/lightning_module.py](src/lightning_module.py) and [lightning_data.py](src/lightning_data.py).
 
 ## Inference and LLM Post-Processing
 
@@ -111,30 +111,19 @@ To qualitatively evaluate the model, see the [`inference notebook`](notebooks/in
 
 ## Quantitative Evaluation
 
-For quantitative evaluation, I measured the **Character Error Rate (CER)** using the [`Levenshtein distance`](https://pypi.org/project/python-Levenshtein/) between predicted text and ground-truth labels.
+For quantitative evaluation, check [`src/evaluate_ocr.py`](src/evaluate_ocr.py) and [notebooks/ocr_evaluation_notebook.ipynb](notebooks/ocr_evaluation_notebook.ipynb). A PDF version of both notebooks is also available in the repository. However, I recommend checking the original notebooks, since due to formatting issues  during the export the PDF files may result harder to read.
 
-Evaluation is performed using:
-
-[`src/evaluate_ocr.py`](src/evaluate_ocr.py)
+Among other metrics, I measured the **Character Error Rate (CER)** using the [`Levenshtein distance`](https://pypi.org/project/python-Levenshtein/) between predicted text and ground-truth labels.
 
 The evaluation was conducted on the validation document:
 
 **Covarrubias – *Tesoro de la lengua***.
 
-The resulting **CER was 0.1868**.
+The resulting **CER was 0.1279**.
 
-Due to the limited amount of available training data, the model exhibits a clear tendency to **overfit**. When evaluated on the training split (containing the remaining five documents), the resulting **CER is 0.0264**, which is significantly lower than the validation CER.
+Due to the limited amount of available training data, the model exhibits a clear tendency to **overfit**. When evaluated on the training split (containing the remaining five documents), the resulting **CER is 0.0081**, which is significantly lower than the validation CER.
 
-
-## Potential improvements
-
-Exploring broader improvements in OCR architectures is outside the scope of this project, whose primary objective was to design and validate a complete OCR pipeline, covering all stages from dataset construction and preprocessing to model training, inference, and LLM-based post-processing.
-
-However, one important component that has not yet been incorporated into the current pipeline is **data augmentation**. Due to the limited size of the available dataset and the clear overfitting observed during training, the model would likely benefit significantly from augmentation techniques designed to increase the variability of the training data.
-
-In the context of historical document OCR, several augmentation strategies could be particularly useful, such as **geometric transformations**, **photometric augmentations** and **synthetic noise and artifacts**.
-
-These augmentations could be incorporated directly into the existing **PyTorch data loading pipeline**, allowing transformations to be applied dynamically during training. This would increase the effective diversity of the training set without requiring additional annotated data.
+The quantitative comparison of raw predictions against LLM post-processed results may be found at [notebooks/ocr_evaluation_notebook.ipynb](notebooks/ocr_evaluation_notebook.ipynb), where additional metrics are used for a fair comparison. 
 
 ---
 
