@@ -125,6 +125,10 @@ Due to the limited amount of available training data, the model exhibits a clear
 
 The quantitative comparison of raw predictions against LLM post-processed results may be found at [notebooks/ocr_evaluation_notebook.ipynb](notebooks/ocr_evaluation_notebook.ipynb), where additional metrics are used for a fair comparison. 
 
+## Released Weights
+
+The checkpoint used for the displayed results can be found under the latest release: [`Second weights release`](https://github.com/TomasGuija/renAIssance/releases/tag/weights-release-v2).
+
 ---
 
 # References
